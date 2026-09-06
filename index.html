@@ -353,7 +353,7 @@
   <div>
     <h1 id="headerTitle">Dr.X</h1>
   </div>
-  <button class="back-btn" id="backBtn" onclick="showGrid()">← နောက်သို့</button>
+  <button class="back-btn" id="backBtn" onclick="goBack()">← နောက်သို့</button>
 </header>
 
 <main>
@@ -392,6 +392,49 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytN8k3DZ-kE40iBpwfH
 let videos = [];
 let currentPage = 1;
 const PAGE_SIZE = 15;
+let activeVideoIndex = null;
+
+// Keep two same-URL history entries on the home page.
+// First back: remain on home. Second back: leave the page.
+const HOME_STATE = "drx-home";
+const HOME_GUARD_STATE = "drx-home-guard";
+const VIDEO_STATE = "drx-video";
+history.replaceState({ drxApp: HOME_STATE }, "", location.href);
+history.pushState({ drxApp: HOME_GUARD_STATE }, "", location.href);
+
+// Handle browser / Android back navigation before the Popunder provider sees it.
+window.addEventListener('popstate', (event) => {
+  event.stopImmediatePropagation();
+  const state = event.state || {};
+
+  if(state.drxApp === VIDEO_STATE && Number.isInteger(state.videoIndex)){
+    renderVideo(state.videoIndex);
+  }else{
+    showGrid(true);
+  }
+}, true);
+
+// The in-page back button follows the same history path as hardware/browser back.
+// Capture it at window level so the Popunder cannot handle this click first.
+function isBackButtonEvent(event){
+  const target = event.target;
+  return !!(target && target.closest && target.closest('#backBtn'));
+}
+
+window.addEventListener('pointerdown', (event) => {
+  if(isBackButtonEvent(event)){
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }
+}, true);
+
+window.addEventListener('click', (event) => {
+  if(isBackButtonEvent(event)){
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    goBack();
+  }
+}, true);
 
 async function loadVideos(){
   const gridEl = document.getElementById('videoGrid');
@@ -505,7 +548,27 @@ function toEmbedUrl(link){
 }
 
 function playVideo(index){
+  const nextState = { drxApp: VIDEO_STATE, videoIndex: index };
+
+  // Replace related-video states so every video-view back press returns to home.
+  if(history.state && history.state.drxApp === VIDEO_STATE){
+    history.replaceState(nextState, "", location.href);
+  }else{
+    // Recreate the home guard if the user already used the first back press.
+    if(history.state && history.state.drxApp === HOME_STATE){
+      history.pushState({ drxApp: HOME_GUARD_STATE }, "", location.href);
+    }
+    history.pushState(nextState, "", location.href);
+  }
+
+  renderVideo(index);
+}
+
+function renderVideo(index){
   const v = videos[index];
+  if(!v) return;
+  activeVideoIndex = index;
+
   document.getElementById('playerFrame').src = toEmbedUrl(v.videoLink);
   document.getElementById('playerTitle').textContent = v.title;
   document.getElementById('playerDate').textContent = new Date(v.dateAdded).toLocaleString();
@@ -516,6 +579,14 @@ function playVideo(index){
   document.getElementById('headerTitle').textContent = "ပြသနေသည်";
   renderRelated(index);
   window.scrollTo(0,0);
+}
+
+function goBack(){
+  if(history.state && history.state.drxApp === VIDEO_STATE){
+    history.back();
+  }else{
+    showGrid(true);
+  }
 }
 
 function renderRelated(currentIndex){
@@ -556,7 +627,13 @@ function renderRelated(currentIndex){
   }).join('');
 }
 
-function showGrid(){
+function showGrid(fromHistory = false){
+  if(!fromHistory && history.state && history.state.drxApp === VIDEO_STATE){
+    history.back();
+    return;
+  }
+
+  activeVideoIndex = null;
   document.getElementById('playerFrame').src = "";
   document.getElementById('gridView').style.display = "block";
   document.getElementById('playerView').style.display = "none";
@@ -585,6 +662,9 @@ positionPagination();
 
 loadVideos();
 </script>
+
+<!-- Popunder Ad: kept as the only ad script. -->
+<script src="https://pl31020597.profitableratecpmnetwork.com/c3/d5/4d/c3d54d8836f0968e6409d5d4aa221046.js"></script>
 
 </body>
 </html>
